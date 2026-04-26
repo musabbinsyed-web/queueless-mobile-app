@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { AppDispatch, RootState } from '../store';
+import { saveCenterThunk, unsaveCenterThunk, fetchSavedCentersThunk } from '../store/slices/savedCenterSlice';
+import { fetchProviderDetailThunk, fetchProviderReviewsThunk, clearCurrentProvider } from '../store/slices/discoverySlice';
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +22,6 @@ import {
 } from '../components/home';
 import type { HomeTabKey } from '../components/home';
 import { ProfileHeader } from '../components/profile';
-import { getCurrentUser, getProviderDetails } from '../services';
 import type { RootStackParamList } from '../navigation/types';
 import type { ServiceDisplay, ServiceProviderDetail } from '../types';
 import {
@@ -38,29 +41,30 @@ export function ProviderDetailScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const tabOffset = getBottomTabBarTotalOffset(insets.bottom);
 
-  const [provider, setProvider] = useState<ServiceProviderDetail | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string>(
-    'https://i.pravatar.cc/120?u=guest',
-  );
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch<AppDispatch>();
+  const { user } = useSelector((state: RootState) => state.auth);
+  const { savedCenters } = useSelector((state: RootState) => state.savedCenters);
+  const { currentProvider: provider, providerReviews, loading: discoveryLoading } = useSelector((state: RootState) => state.discovery);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [p, user] = await Promise.all([
-        getProviderDetails(providerId),
-        getCurrentUser(),
-      ]);
-      if (!cancelled) {
-        setProvider(p);
-        setAvatarUrl(user.avatarUrl);
-        setLoading(false);
-      }
-    })();
+    dispatch(fetchSavedCentersThunk());
+    dispatch(fetchProviderDetailThunk(providerId));
+    dispatch(fetchProviderReviewsThunk(providerId));
     return () => {
-      cancelled = true;
+      dispatch(clearCurrentProvider());
     };
-  }, [providerId]);
+  }, [dispatch, providerId]);
+
+  const isSaved = savedCenters.some(c => c.id === providerId || (c as any)._id === providerId);
+
+  const toggleSave = async () => {
+    if (isSaved) {
+      await dispatch(unsaveCenterThunk(providerId));
+    } else {
+      await dispatch(saveCenterThunk(providerId));
+    }
+    dispatch(fetchSavedCentersThunk());
+  };
 
   const onTabPress = useCallback(
     (tab: HomeTabKey) => {
@@ -79,7 +83,7 @@ export function ProviderDetailScreen({ navigation, route }: Props) {
     [navigation],
   );
 
-  if (loading) {
+  if (discoveryLoading) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
         <StatusBar barStyle="dark-content" backgroundColor={homeTheme.background} />
@@ -118,10 +122,8 @@ export function ProviderDetailScreen({ navigation, route }: Props) {
             { paddingBottom: tabOffset + 20 },
           ]}>
           <ProfileHeader
-            avatarUrl={avatarUrl}
-            onMenuPress={() =>
-              Alert.alert('Menu', 'Navigation menu is not wired yet.')
-            }
+            avatarUrl={user?.avatarUrl ?? 'https://i.pravatar.cc/120?u=guest'}
+            onMenuPress={() => navigation.navigate('Home')}
             onAvatarPress={() => navigation.navigate('Profile')}
           />
 
@@ -138,6 +140,9 @@ export function ProviderDetailScreen({ navigation, route }: Props) {
                     {provider.rating.toFixed(1)}
                   </Text>
                 </View>
+                <Pressable onPress={toggleSave} style={styles.saveBtn}>
+                  <Text style={{ fontSize: 24 }}>{isSaved ? '❤️' : '🤍'}</Text>
+                </Pressable>
               </View>
               <View style={styles.heroLocRow}>
                 <LocationIcon width={14} height={16} />
@@ -231,6 +236,29 @@ export function ProviderDetailScreen({ navigation, route }: Props) {
               <GreenNotificationIcon width={40} height={41} />
             </View>
           ) : null}
+
+          {providerReviews && providerReviews.length > 0 && (
+            <View style={styles.reviewsSection}>
+              <Text style={styles.sectionTitle}>Customer Reviews</Text>
+              {providerReviews.map((review) => (
+                <View key={review._id} style={styles.reviewCard}>
+                  <View style={styles.reviewHeader}>
+                    <Text style={styles.reviewerName}>{review.userId?.name || 'Anonymous User'}</Text>
+                    <View style={styles.ratingPill}>
+                      <Text style={styles.star}>★</Text>
+                      <Text style={styles.ratingNum}>{review.rating}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.reviewDate}>
+                    {new Date(review.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                  </Text>
+                  {!!review.comment && (
+                    <Text style={styles.reviewComment}>{review.comment}</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
         </ScrollView>
         <BottomTabBar activeTab="home" onTabPress={onTabPress} />
       </View>
@@ -302,6 +330,10 @@ const styles = StyleSheet.create({
     color: homeTheme.text,
     letterSpacing: -0.3,
     lineHeight: 28,
+  },
+  saveBtn: {
+    marginLeft: 8,
+    padding: 4,
   },
   ratingPill: {
     flexDirection: 'row',
@@ -484,5 +516,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#047857',
     lineHeight: 18,
+  },
+  reviewsSection: {
+    marginTop: 24,
+  },
+  reviewCard: {
+    backgroundColor: homeTheme.surface,
+    padding: 16,
+    borderRadius: homeSpacing.cardRadius,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: homeTheme.border,
+    marginBottom: 12,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  reviewerName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: homeTheme.text,
+  },
+  reviewDate: {
+    fontSize: 12,
+    color: homeTheme.textSecondary,
+    marginBottom: 8,
+  },
+  reviewComment: {
+    fontSize: 14,
+    color: homeTheme.text,
+    lineHeight: 20,
   },
 });

@@ -13,6 +13,7 @@ export const onboardingCopy = {
 
 export const loginCopy = {
   tagline: 'Wait less, live more.',
+  brandSubtitle: 'Log into your account',
   welcomeTitle: 'Welcome back',
   welcomeSubtitle: 'Please enter your details to sign in.',
   emailLabel: 'Email or Phone Number',

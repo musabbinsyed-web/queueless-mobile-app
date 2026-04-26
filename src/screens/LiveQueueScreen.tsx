@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { AppDispatch, RootState } from '../store';
+import { bookTokenThunk } from '../store/slices/bookingSlice';
+import { fetchProviderDetailThunk, fetchLiveQueueThunk, clearCurrentProvider } from '../store/slices/discoverySlice';
 import {
   ActivityIndicator,
   ImageBackground,
@@ -18,7 +22,6 @@ import {
   FloatingBookTokenButton,
 } from '../components/home';
 import { ProfileHeader } from '../components/profile';
-import { getCurrentUser, getProviderDetails } from '../services';
 import type { TokenConfirmationData } from '../types';
 import type { RootStackParamList } from '../navigation/types';
 import type { ServiceDisplay, ServiceProviderDetail } from '../types';
@@ -45,69 +48,57 @@ function hashStr(s: string): number {
   return s.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
 }
 
-/** Deterministic mock queue numbers for demo. */
-function mockQueue(providerId: string, serviceId: string) {
-  const h = hashStr(`${providerId}:${serviceId}`);
-  const peopleAhead = 8 + (h % 14);
-  const nowServing = 120 + (h % 35);
-  const yourToken = nowServing + peopleAhead;
-  const estMin = Math.max(5, Math.min(45, peopleAhead * 2));
-  const initialTimerSeconds = 11 * 60 + 45 + (h % 120);
-  const progress = Math.min(0.9, Math.max(0.12, 1 - peopleAhead / 22));
-  return {
-    nowServing,
-    yourToken,
-    peopleAhead,
-    estimatedWaitMinutes: estMin,
-    initialTimerSeconds,
-    progress,
-  };
-}
+// We will use real queue data fetched from backend
 
 export function LiveQueueScreen({ navigation, route }: Props) {
   const { providerId, serviceId } = route.params;
   const insets = useSafeAreaInsets();
   const fabBottom = Math.max(insets.bottom, 12) + 8;
 
-  const [provider, setProvider] = useState<ServiceProviderDetail | null>(null);
-  const [service, setService] = useState<ServiceDisplay | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState('https://i.pravatar.cc/120?u=guest');
   const [loading, setLoading] = useState(true);
-  const queue = useMemo(
-    () => mockQueue(providerId, serviceId),
-    [providerId, serviceId],
+  const { currentProvider: provider, liveQueue: liveQueueData, loading: discoveryLoading } = useSelector(
+    (state: RootState) => state.discovery
   );
+  const [queue, setQueue] = useState({
+    nowServing: 0,
+    yourToken: 0,
+    peopleAhead: 0,
+    estimatedWaitMinutes: 0,
+    progress: 0.1,
+  });
 
-  const [secondsLeft, setSecondsLeft] = useState(
-    () => queue.initialTimerSeconds,
-  );
+  const [secondsLeft, setSecondsLeft] = useState(600);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const dispatch = useDispatch<AppDispatch>();
+  const isBooking = useSelector((state: RootState) => state.bookings.loading);
+  const { user } = useSelector((state: RootState) => state.auth);
+
+  const service = provider?.services.find(s => s.id === serviceId) ?? null;
 
   useEffect(() => {
-    setSecondsLeft(queue.initialTimerSeconds);
-  }, [queue.initialTimerSeconds]);
-
-  useEffect(() => {
-    let cancelled = false;
     (async () => {
-      const [p, user] = await Promise.all([
-        getProviderDetails(providerId),
-        getCurrentUser(),
+      await Promise.all([
+        dispatch(fetchProviderDetailThunk(providerId)),
+        dispatch(fetchLiveQueueThunk(providerId)),
       ]);
-      if (!cancelled && p) {
-        const svc = p.services.find(s => s.id === serviceId) ?? null;
-        setProvider(p);
-        setService(svc);
-        setAvatarUrl(user.avatarUrl);
-      }
-      if (!cancelled) {
-        setLoading(false);
-      }
+      setLoading(false);
     })();
     return () => {
-      cancelled = true;
+      dispatch(clearCurrentProvider());
     };
-  }, [providerId, serviceId]);
+  }, [dispatch, providerId, serviceId]);
+
+  useEffect(() => {
+    if (liveQueueData) {
+      setQueue({
+        nowServing: liveQueueData.nowServing,
+        yourToken: liveQueueData.nextToken,
+        peopleAhead: liveQueueData.peopleAhead,
+        estimatedWaitMinutes: liveQueueData.estimatedWaitMinutes,
+        progress: Math.min(0.9, Math.max(0.1, 1 - liveQueueData.peopleAhead / 20)),
+      });
+    }
+  }, [liveQueueData]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -124,26 +115,34 @@ export function LiveQueueScreen({ navigation, route }: Props) {
     setConfirmOpen(false);
   }, []);
 
-  const onConfirmYes = useCallback(() => {
-    if (!provider || !service) {
-      return;
+  const onConfirmYes = useCallback(async () => {
+    if (!provider || !service) return;
+    
+    // Dispatch real booking thunk
+    const resultAction = await dispatch(bookTokenThunk({ providerId, serviceId }));
+    
+    if (bookTokenThunk.fulfilled.match(resultAction)) {
+      setConfirmOpen(false);
+      const { tokenConfirmation } = resultAction.payload;
+      
+      const snap: TokenConfirmationData = {
+        tokenDisplay: String(tokenConfirmation.tokenNumber),
+        serviceName: service.name,
+        providerName: provider.name,
+        location: provider.location,
+        queuePosition: tokenConfirmation.queuePosition,
+        estimatedWaitMinutes: parseInt(tokenConfirmation.estimatedWaitTime.replace(/[^0-9]/g, '')) || 5,
+        liveProgressPercent: Math.round(queue.progress * 100),
+        finishedPeopleCount: 0, // Not tracked on backend currently
+      };
+      
+      navigation.navigate('TokenConfirmation', { snapshot: snap });
+    } else {
+      // Handled by standard error UI if we had one, for now just close
+      setConfirmOpen(false);
+      console.warn('Booking failed:', resultAction.payload);
     }
-    setConfirmOpen(false);
-    const snap: TokenConfirmationData = {
-      tokenDisplay: String(queue.yourToken),
-      serviceName: service.name,
-      providerName: provider.name,
-      location: provider.location,
-      queuePosition: Math.max(
-        1,
-        Math.min(12, Math.round(queue.peopleAhead / 2) || 3),
-      ),
-      estimatedWaitMinutes: queue.estimatedWaitMinutes,
-      liveProgressPercent: Math.round(queue.progress * 100),
-      finishedPeopleCount: Math.max(2, 14 - queue.peopleAhead),
-    };
-    navigation.navigate('TokenConfirmation', { snapshot: snap });
-  }, [navigation, provider, queue, service]);
+  }, [dispatch, navigation, provider, service, providerId, serviceId, queue.progress]);
 
   if (loading) {
     return (
@@ -181,7 +180,7 @@ export function LiveQueueScreen({ navigation, route }: Props) {
             { paddingBottom: scrollBottomPad },
           ]}>
           <ProfileHeader
-            avatarUrl={avatarUrl}
+            avatarUrl={user?.avatarUrl ?? 'https://i.pravatar.cc/120?u=guest'}
             onMenuPress={() => navigation.navigate('Home')}
             onAvatarPress={() => navigation.navigate('Profile')}
           />
@@ -204,7 +203,7 @@ export function LiveQueueScreen({ navigation, route }: Props) {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.yourCard}>
-              <Text style={styles.yourLabel}>YOUR TOKEN</Text>
+              <Text style={styles.yourLabel}>NEXT TOKEN</Text>
               <Text style={styles.yourNum}>{queue.yourToken}</Text>
               <Text style={styles.yourSub}>Next in line</Text>
             </LinearGradient>
@@ -297,8 +296,8 @@ export function LiveQueueScreen({ navigation, route }: Props) {
                   onPress={onConfirmNo}>
                   <Text style={styles.modalBtnGhostText}>No</Text>
                 </Pressable>
-                <Pressable style={styles.modalBtn} onPress={onConfirmYes}>
-                  <Text style={styles.modalBtnPrimaryText}>Yes</Text>
+                <Pressable style={styles.modalBtn} onPress={onConfirmYes} disabled={isBooking}>
+                  <Text style={styles.modalBtnPrimaryText}>{isBooking ? 'Wait...' : 'Yes'}</Text>
                 </Pressable>
               </View>
             </View>

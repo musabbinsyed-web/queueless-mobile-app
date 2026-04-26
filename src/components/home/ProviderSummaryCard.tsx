@@ -22,7 +22,7 @@ export function ProviderSummaryCard({
   onPress,
 }: ProviderSummaryCardProps) {
   const busy = BUSYNESS_STYLES[provider.busyness];
-  const serviceCount = provider.services.length;
+  const serviceCount = provider.services?.length || 0;
 
   const inner = (
     <>

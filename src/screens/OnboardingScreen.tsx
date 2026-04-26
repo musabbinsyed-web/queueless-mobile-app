@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
+  Animated,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -38,6 +39,31 @@ function OnboardingScreen({ navigation }: Props) {
     return () => clearTimeout(t);
   }, [goToLogin]);
 
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 6,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, scaleAnim, slideAnim]);
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor="#D8EBFF" />
@@ -54,22 +80,26 @@ function OnboardingScreen({ navigation }: Props) {
             accessibilityRole="button"
             onPress={goToLogin}
             style={styles.pressableMain}>
-            <View style={styles.brandBlock}>
-              <LogoMark width={logoSize} height={logoSize} />
+            
+            <Animated.View style={[styles.brandBlock, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+              <View style={[styles.logoCircle, { width: logoSize * 1.4, height: logoSize * 1.4, borderRadius: logoSize * 0.7 }]}>
+                <LogoMark width={logoSize} height={logoSize} />
+              </View>
               <View style={styles.titleGap}>
                 <BrandWordmark size="large" />
               </View>
               <Text style={styles.tagline}>{onboardingCopy.tagline}</Text>
-            </View>
+            </Animated.View>
 
-            <View style={styles.mid}>
+            <Animated.View style={[styles.mid, { opacity: fadeAnim }]}>
               <OnboardingPagination activeIndex={1} />
               <Text style={styles.loading}>{onboardingCopy.loadingMessage}</Text>
-            </View>
+            </Animated.View>
 
-            <View style={styles.cardWrap}>
+            <Animated.View style={[styles.cardWrap, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
               <OnboardingLiveCard copy={onboardingCopy.liveCard} />
-            </View>
+            </Animated.View>
+            
           </Pressable>
         </View>
       </AuthGradientBackground>
@@ -98,6 +128,16 @@ const styles = StyleSheet.create({
   brandBlock: {
     alignItems: 'center',
     marginTop: 8,
+  },
+  logoCircle: {
+    backgroundColor: authColors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: authColors.brandBlue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 6,
   },
   titleGap: {
     marginTop: 16,

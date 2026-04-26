@@ -1,14 +1,18 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { AppDispatch, RootState } from '../store';
+import { submitReviewThunk } from '../store/slices/bookingSlice';
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { getBookingById } from '../services';
 import type { RootStackParamList } from '../navigation/types';
 import type { Booking } from '../types';
 import { homeSpacing, homeTheme } from '../theme/homeTheme';
@@ -26,24 +30,18 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 export function BookingDetailsScreen({ route, navigation }: Props) {
   const { bookingId } = route.params;
-  const [booking, setBooking] = useState<Booking | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const result = await getBookingById(bookingId);
-      if (!cancelled) {
-        setBooking(result);
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [bookingId]);
+  const dispatch = useDispatch<AppDispatch>();
+  const { myBookings } = useSelector((state: RootState) => state.bookings);
+  
+  // Find booking from Redux state directly — no API call needed
+  const booking = myBookings.find(b => b.id === bookingId) ?? null;
 
   const isActive = booking?.status === 'ACTIVE';
+  
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   useLayoutEffect(() => {
     if (booking) {
@@ -51,13 +49,26 @@ export function BookingDetailsScreen({ route, navigation }: Props) {
     }
   }, [booking, navigation]);
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={homeTheme.primary} />
-      </View>
-    );
-  }
+  const handleSubmitReview = async () => {
+    if (!booking) return;
+    setSubmittingReview(true);
+    try {
+      const resultAction = await dispatch(submitReviewThunk({
+        bookingId: booking.id,
+        providerId: booking.providerId,
+        rating,
+        comment,
+      }));
+      if (resultAction.meta.requestStatus === 'fulfilled') {
+        Alert.alert('Success', 'Your review has been submitted!');
+        setReviewModalVisible(false);
+      } else {
+        Alert.alert('Error', resultAction.payload as string || 'Failed to submit review');
+      }
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   if (!booking) {
     return (
@@ -108,6 +119,39 @@ export function BookingDetailsScreen({ route, navigation }: Props) {
         <View style={styles.hairline} />
         <DetailRow label="Reference" value={booking.referenceCode} />
       </View>
+
+      {!isActive && (
+        <View style={styles.reviewSection}>
+          <Pressable style={styles.reviewBtn} onPress={() => setReviewModalVisible(true)}>
+            <Text style={styles.reviewBtnText}>Leave a Review</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {reviewModalVisible && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Rate Your Experience</Text>
+            <View style={styles.starsRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Pressable key={star} onPress={() => setRating(star)}>
+                  <Text style={[styles.starIcon, { color: star <= rating ? '#f59e0b' : '#d1d5db' }]}>★</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable 
+              style={[styles.submitReviewBtn, submittingReview && styles.disabledBtn]} 
+              onPress={handleSubmitReview}
+              disabled={submittingReview}
+            >
+              <Text style={styles.submitReviewBtnText}>{submittingReview ? 'Submitting...' : 'Submit Review'}</Text>
+            </Pressable>
+            <Pressable style={styles.cancelBtn} onPress={() => setReviewModalVisible(false)}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -214,5 +258,79 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: homeTheme.border,
     marginVertical: 14,
+  },
+  reviewSection: {
+    marginTop: 20,
+    paddingHorizontal: homeSpacing.screenHorizontal,
+  },
+  reviewBtn: {
+    backgroundColor: '#ecfdf5',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#34d399',
+  },
+  reviewBtnText: {
+    color: '#059669',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: 24,
+    borderRadius: 16,
+    width: '85%',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+    color: '#1f2937',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 24,
+  },
+  starIcon: {
+    fontSize: 40,
+  },
+  submitReviewBtn: {
+    backgroundColor: homeTheme.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  submitReviewBtnText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  disabledBtn: {
+    opacity: 0.6,
+  },
+  cancelBtn: {
+    paddingVertical: 12,
+  },
+  cancelBtnText: {
+    color: '#6b7280',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

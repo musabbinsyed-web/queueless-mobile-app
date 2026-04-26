@@ -16,6 +16,13 @@ export type RootStackParamList = {
   Queue: undefined;
   BookingDetails: { bookingId: string };
   Profile: undefined;
+  SavedCenters: undefined;
+  
+  // Provider Flow
+  ProviderDashboard: undefined;
+  QueueManagement: undefined;
+  ServiceManager: undefined;
+  ProviderSettings: undefined;
 };
 
 export type OnboardingScreenProps = NativeStackScreenProps<
@@ -55,4 +62,22 @@ export type BookingDetailsScreenProps = NativeStackScreenProps<
 export type ProfileScreenProps = NativeStackScreenProps<
   RootStackParamList,
   'Profile'
+>;
+
+// Provider Props
+export type ProviderDashboardScreenProps = NativeStackScreenProps<
+  RootStackParamList,
+  'ProviderDashboard'
+>;
+export type QueueManagementScreenProps = NativeStackScreenProps<
+  RootStackParamList,
+  'QueueManagement'
+>;
+export type ServiceManagerScreenProps = NativeStackScreenProps<
+  RootStackParamList,
+  'ServiceManager'
+>;
+export type ProviderSettingsScreenProps = NativeStackScreenProps<
+  RootStackParamList,
+  'ProviderSettings'
 >;

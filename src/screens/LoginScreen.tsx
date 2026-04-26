@@ -1,4 +1,7 @@
 import { useCallback, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { loginThunk, clearError } from '../store/slices/authSlice';
+import { AppDispatch, RootState } from '../store';
 import {
   Alert,
   Pressable,
@@ -10,22 +13,18 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import LoginMark from '../assets/icons/login_ison.svg';
+import LoaderMark from '../assets/icons/loader_ison.svg';
 import {
-  AppleMark,
   AuthElevatedCard,
   AuthGradientBackground,
   BrandWordmark,
   EyeIcon,
   EyeOffIcon,
-  FormDivider,
-  GoogleMark,
-  InlineLink,
+  GradientPillButton,
   LabeledAuthInput,
   LockIcon,
   MailIcon,
-  PillButton,
-  SocialAuthButton,
+  InlineLink,
 } from '../components/auth';
 import { loginCopy, loginDummyUser } from '../constants/authCopy';
 import type { RootStackParamList } from '../navigation/types';
@@ -33,22 +32,30 @@ import { authColors, authDesign } from '../theme/authDesign';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
+const LOADER_SIZE = 64;
+
 function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState<string>(loginDummyUser.email);
   const [password, setPassword] = useState('password123');
   const [secure, setSecure] = useState(true);
 
-  const onLogin = useCallback(() => {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Home' }],
-    });
-  }, [navigation]);
+  const dispatch = useDispatch<AppDispatch>();
+  const { loading } = useSelector((state: RootState) => state.auth);
 
-  const onSocial = useCallback((provider: string) => {
-    Alert.alert('Coming soon', `${provider} sign-in is not wired yet.`);
-  }, []);
+  const onLogin = useCallback(async () => {
+    dispatch(clearError());
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    
+    const resultAction = await dispatch(loginThunk({ email, password }));
+    
+    if (loginThunk.rejected.match(resultAction)) {
+      Alert.alert('Login Failed', resultAction.payload as string);
+    }
+  }, [dispatch, email, password]);
 
   return (
     <View style={styles.root}>
@@ -61,21 +68,18 @@ function LoginScreen({ navigation }: Props) {
             styles.scrollContent,
             { paddingBottom: Math.max(insets.bottom, 16) },
           ]}>
+          
           <View style={styles.header}>
-            <LoginMark
-              width={authDesign.loginHeaderIconSize}
-              height={authDesign.loginHeaderIconSize * (93 / 104)}
-            />
+            <View style={styles.logoCircle}>
+              <LoaderMark width={LOADER_SIZE * 0.6} height={LOADER_SIZE * 0.6} />
+            </View>
             <View style={styles.headerTitles}>
-              <BrandWordmark size="medium" tone="mono" />
-              <Text style={styles.headerTagline}>{loginCopy.tagline}</Text>
+              <BrandWordmark size="medium" tone="brand" />
+              <Text style={styles.headerSubtitle}>{loginCopy.brandSubtitle}</Text>
             </View>
           </View>
 
           <AuthElevatedCard style={styles.card}>
-            <Text style={styles.welcome}>{loginCopy.welcomeTitle}</Text>
-            <Text style={styles.welcomeSub}>{loginCopy.welcomeSubtitle}</Text>
-
             <View style={styles.fields}>
               <LabeledAuthInput
                 label={loginCopy.emailLabel}
@@ -90,20 +94,10 @@ function LoginScreen({ navigation }: Props) {
               <LabeledAuthInput
                 label={loginCopy.passwordLabel}
                 leading={<LockIcon />}
-                trailing={
-                  <InlineLink
-                    title={loginCopy.forgotPassword}
-                    onPress={() =>
-                      Alert.alert('Reset', 'Forgot password flow not wired yet.')
-                    }
-                  />
-                }
                 inputTrailing={
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={
-                      secure ? 'Show password' : 'Hide password'
-                    }
+                    accessibilityLabel={secure ? 'Show password' : 'Hide password'}
                     hitSlop={10}
                     onPress={() => setSecure(s => !s)}>
                     {secure ? <EyeIcon /> : <EyeOffIcon />}
@@ -116,60 +110,31 @@ function LoginScreen({ navigation }: Props) {
               />
             </View>
 
-            <PillButton onPress={onLogin} style={styles.loginBtn}>
-              {loginCopy.loginCta}
-            </PillButton>
-
-            <FormDivider label={loginCopy.divider} />
-
-            <View style={styles.socialRow}>
-              <SocialAuthButton
-                label={loginCopy.googleLabel}
-                onPress={() => onSocial('Google')}
-                leading={<GoogleMark />}
-              />
-              <View style={styles.socialGap} />
-              <SocialAuthButton
-                label={loginCopy.appleLabel}
-                onPress={() => onSocial('Apple')}
-                leading={<AppleMark />}
-              />
-            </View>
+            <GradientPillButton onPress={onLogin} style={styles.loginBtn}>
+              {loading ? 'Logging in...' : loginCopy.loginCta}
+            </GradientPillButton>
           </AuthElevatedCard>
 
-          <Text style={styles.signupRow}>
-            {loginCopy.createAccountPrompt}{' '}
-            <Text
-              onPress={() => navigation.navigate('SignUp')}
-              style={styles.signupLink}>
-              {loginCopy.createAccountCta}
+          <View style={styles.signupSection}>
+            <Text style={styles.signupRow}>
+              {loginCopy.createAccountPrompt}{' '}
+              <Text
+                onPress={() => navigation.navigate('SignUp')}
+                style={styles.signupLink}>
+                {loginCopy.createAccountCta}
+              </Text>
             </Text>
-          </Text>
 
-          <View style={styles.footerLinks}>
-            <Pressable
-              onPress={() =>
-                Alert.alert('Privacy Policy', 'Static placeholder link.')
-              }>
+            <View style={styles.footerLinks}>
               <Text style={styles.footerLink}>Privacy Policy</Text>
-            </Pressable>
-            <Text style={styles.footerSep}> · </Text>
-            <Pressable
-              onPress={() =>
-                Alert.alert('Terms of Service', 'Static placeholder link.')
-              }>
+              <Text style={styles.footerSep}>•</Text>
               <Text style={styles.footerLink}>Terms of Service</Text>
-            </Pressable>
-            <Text style={styles.footerSep}> · </Text>
-            <Pressable
-              onPress={() =>
-                Alert.alert('Help Center', 'Static placeholder link.')
-              }>
+              <Text style={styles.footerSep}>•</Text>
               <Text style={styles.footerLink}>Help Center</Text>
-            </Pressable>
-          </View>
+            </View>
 
-          <Text style={styles.copyright}>{loginCopy.copyright}</Text>
+            <Text style={styles.copyright}>{loginCopy.copyright}</Text>
+          </View>
         </ScrollView>
       </AuthGradientBackground>
     </View>
@@ -182,54 +147,54 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingTop: 8,
+    justifyContent: 'center',
+    paddingTop: 16,
   },
   header: {
     alignItems: 'center',
     marginBottom: authDesign.sectionGap,
   },
+  logoCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: authColors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: authColors.brandBlue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
   headerTitles: {
     alignItems: 'center',
     marginTop: 16,
-    gap: 6,
+    gap: 4,
   },
-  headerTagline: {
+  headerSubtitle: {
     fontSize: 15,
+    fontWeight: '500',
     color: authColors.bodyGray,
+    letterSpacing: 0.2,
   },
   card: {
-    marginBottom: 20,
-  },
-  welcome: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: authColors.titleGray,
-    marginBottom: 8,
-  },
-  welcomeSub: {
-    fontSize: 14,
-    color: authColors.bodyGray,
     marginBottom: 24,
-    lineHeight: 20,
   },
   fields: {
-    marginBottom: 4,
+    marginBottom: 8,
   },
   loginBtn: {
     marginTop: 8,
   },
-  socialRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  socialGap: {
-    width: 12,
+  signupSection: {
+    marginTop: 8,
+    alignItems: 'center',
   },
   signupRow: {
-    textAlign: 'center',
     fontSize: 15,
     color: authColors.bodyGray,
-    marginBottom: 20,
+    marginBottom: 24,
   },
   signupLink: {
     fontWeight: '700',
@@ -237,25 +202,27 @@ const styles = StyleSheet.create({
   },
   footerLinks: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    gap: 8,
+    marginBottom: 16,
+    opacity: 0.7,
   },
   footerLink: {
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: '600',
     color: authColors.taglineGray,
   },
   footerSep: {
-    fontSize: 11,
+    fontSize: 12,
     color: authColors.taglineGray,
   },
   copyright: {
     fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.8,
+    fontWeight: '700',
+    letterSpacing: 1,
     color: authColors.taglineGray,
     textAlign: 'center',
+    opacity: 0.6,
   },
 });
 

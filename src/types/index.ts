@@ -56,6 +56,7 @@ export type BookingStatus = 'ACTIVE' | 'COMPLETED';
 
 export type Booking = {
   id: string;
+  providerId: string;
   name: string;
   subtitle: string;
   status: BookingStatus;
@@ -69,6 +70,8 @@ export type Booking = {
   queuePosition?: number;
   liveProgressPercent?: number;
   finishedPeopleAhead?: number;
+  /** Customer user id — used by provider dashboard queue snapshot. */
+  userId?: string;
 };
 
 /** Payload for the token confirmation / active queue UI. */
@@ -86,4 +89,16 @@ export type TokenConfirmationData = {
 export type UserProfile = {
   displayName: string;
   avatarUrl: string;
+  role?: 'customer' | 'provider';
+  email?: string;
+};
+
+export type Review = {
+  id: string;
+  userId: { _id: string; name: string };
+  providerId: string;
+  bookingId: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
 };

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 import {
   ActivityIndicator,
   Alert,
@@ -21,11 +23,6 @@ import {
 } from '../components/home';
 import type { HomeTabKey } from '../components/home';
 import { ProfileHeader } from '../components/profile';
-import {
-  bookingToTokenConfirmationData,
-  getBookingById,
-  getCurrentUser,
-} from '../services';
 import type { RootStackParamList } from '../navigation/types';
 import type { TokenConfirmationData } from '../types';
 import { homeSpacing, homeTheme } from '../theme/homeTheme';
@@ -64,46 +61,49 @@ export function TokenConfirmationScreen({ navigation, route }: Props) {
   const [data, setData] = useState<TokenConfirmationData | null>(
     snapshot ?? null,
   );
-  const [avatarUrl, setAvatarUrl] = useState(
-    'https://i.pravatar.cc/120?u=guest',
-  );
+  const { user } = useSelector((state: RootState) => state.auth);
+  const { myBookings } = useSelector((state: RootState) => state.bookings);
+  
+  // Find booking in Redux
+  const booking = myBookings.find(b => b.id === bookingId);
+  
   const [missing, setMissing] = useState(false);
   const [loading, setLoading] = useState(!snapshot && !!bookingId);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const user = await getCurrentUser();
-      if (!cancelled) {
-        setAvatarUrl(user.avatarUrl);
-      }
-      if (snapshot) {
-        if (!cancelled) {
-          setLoading(false);
-        }
-        return;
-      }
-      if (!bookingId) {
-        if (!cancelled) {
-          setMissing(true);
-          setLoading(false);
-        }
-        return;
-      }
-      const booking = await getBookingById(bookingId);
-      if (!cancelled) {
-        if (booking?.status === 'ACTIVE') {
-          setData(bookingToTokenConfirmationData(booking));
-        } else {
-          setMissing(true);
-        }
-        setLoading(false);
-      }
-    })();
+    
+    if (snapshot) {
+      setLoading(false);
+      return;
+    }
+    
+    if (!booking) {
+      setMissing(true);
+      setLoading(false);
+      return;
+    }
+    
+    if (booking.status === 'ACTIVE') {
+      setData({
+        tokenDisplay: String(booking.tokenNumber || '---'),
+        serviceName: booking.subtitle,
+        providerName: booking.name,
+        location: booking.address,
+        queuePosition: booking.queuePosition || 1,
+        estimatedWaitMinutes: booking.waitMinutes || 0,
+        liveProgressPercent: booking.liveProgressPercent || 10,
+        finishedPeopleCount: booking.finishedPeopleAhead || 0,
+      });
+    } else {
+      setMissing(true);
+    }
+    setLoading(false);
+    
     return () => {
       cancelled = true;
     };
-  }, [bookingId, snapshot]);
+  }, [snapshot, booking]);
 
   const onTabPress = useCallback(
     (tab: HomeTabKey) => {
@@ -165,7 +165,7 @@ export function TokenConfirmationScreen({ navigation, route }: Props) {
             { paddingBottom: tabOffset + 24 },
           ]}>
           <ProfileHeader
-            avatarUrl={avatarUrl}
+            avatarUrl={user?.avatarUrl ?? 'https://i.pravatar.cc/120?u=guest'}
             onMenuPress={() => navigation.navigate('Home')}
             onAvatarPress={() => navigation.navigate('Profile')}
           />

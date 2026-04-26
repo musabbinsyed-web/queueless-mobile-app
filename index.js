@@ -1,6 +1,7 @@
 /**
  * @format
  */
+console.log('Index.js entry hit...');
 
 import { AppRegistry } from 'react-native';
 import App from './App';

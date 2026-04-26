@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/native';
+import { AppDispatch, RootState } from '../store';
+import { loadBookingsThunk } from '../store/slices/bookingSlice';
 import {
   ActivityIndicator,
   FlatList,
@@ -15,34 +19,20 @@ import {
   getBottomTabBarTotalOffset,
 } from '../components/home';
 import type { BookingItem, HomeTabKey } from '../components/home';
-import { getBookings } from '../services';
 import type { QueueScreenProps } from '../navigation/types';
 import { homeSpacing, homeTheme } from '../theme/homeTheme';
 
 export function QueueScreen({ navigation }: QueueScreenProps) {
   const insets = useSafeAreaInsets();
   const tabOffset = getBottomTabBarTotalOffset(insets.bottom);
-  const [bookings, setBookings] = useState<BookingItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch<AppDispatch>();
+  const { myBookings, loading } = useSelector((state: RootState) => state.bookings);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await getBookings();
-        if (!cancelled) {
-          setBookings(data);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      dispatch(loadBookingsThunk());
+    }, [dispatch])
+  );
 
   const onTabPress = useCallback(
     (tab: HomeTabKey) => {
@@ -100,7 +90,7 @@ export function QueueScreen({ navigation }: QueueScreenProps) {
           </View>
         ) : (
           <FlatList
-            data={bookings}
+            data={myBookings}
             keyExtractor={keyExtractor}
             renderItem={renderItem}
             ListHeaderComponent={ListHeader}

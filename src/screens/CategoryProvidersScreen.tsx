@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { AppDispatch, RootState } from '../store';
+import { fetchProvidersByCategoryThunk } from '../store/slices/discoverySlice';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,7 +12,6 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderSummaryCard } from '../components/home';
-import { getProvidersByCategory } from '../services';
 import type { RootStackParamList } from '../navigation/types';
 import type { ServiceProvider } from '../types';
 import { homeSpacing, homeTheme } from '../theme/homeTheme';
@@ -18,26 +20,16 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CategoryProviders'>;
 
 export function CategoryProvidersScreen({ route, navigation }: Props) {
   const { categoryId, categoryName } = route.params;
-  const [providers, setProviders] = useState<ServiceProvider[]>([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch<AppDispatch>();
+  const { providers, loading } = useSelector((state: RootState) => state.discovery);
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: categoryName });
   }, [categoryName, navigation]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const list = await getProvidersByCategory(categoryId);
-      if (!cancelled) {
-        setProviders(list);
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [categoryId]);
+    dispatch(fetchProvidersByCategoryThunk(categoryId));
+  }, [dispatch, categoryId]);
 
   const renderItem = useCallback<ListRenderItem<ServiceProvider>>(
     ({ item }) => (
