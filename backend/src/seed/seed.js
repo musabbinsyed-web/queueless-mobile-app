@@ -100,6 +100,71 @@ const seedDB = async () => {
     }));
     await Provider.insertMany(providersWithOwner);
 
+    console.log('Clearing old bookings...');
+    const Booking = require('../models/Booking');
+    await Booking.deleteMany({});
+
+    console.log('Creating dummy customer users...');
+    const dummyCustomers = [];
+    for (let i = 1; i <= 5; i++) {
+      let customer = await User.findOne({ email: `customer${i}@example.com` });
+      if (!customer) {
+        const passwordHash = await bcrypt.hash('password123', 12);
+        customer = await User.create({
+          fullName: `Test Customer ${i}`,
+          email: `customer${i}@example.com`,
+          passwordHash,
+          role: 'customer'
+        });
+      }
+      dummyCustomers.push(customer);
+    }
+
+    console.log('Inserting mock queue data (bookings)...');
+    const mockBookings = [
+      // Providence Medical Center Queue (nowServing: 120, nextToken: 130) -> tokens 120 to 129 are waiting
+      ...Array.from({ length: 10 }).map((_, i) => ({
+        userId: dummyCustomers[i % 5]._id,
+        providerId: 'prov-hosp-pmc',
+        serviceId: new mongoose.Types.ObjectId(), // Fake service ID
+        serviceName: 'General Checkup',
+        providerName: 'Providence Medical Center',
+        providerLocation: '1200 Wellness Blvd, Metro City',
+        providerImage: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=800&h=600&fit=crop&q=80',
+        status: 'ACTIVE',
+        tokenNumber: 120 + i,
+        referenceCode: `PMC-${120 + i}`,
+      })),
+      // Riverside Community Hospital Queue (nowServing: 40, nextToken: 45) -> tokens 40 to 44
+      ...Array.from({ length: 5 }).map((_, i) => ({
+        userId: dummyCustomers[i % 5]._id,
+        providerId: 'prov-hosp-rch',
+        serviceId: new mongoose.Types.ObjectId(),
+        serviceName: 'Blood Test',
+        providerName: 'Riverside Community Hospital',
+        providerLocation: '88 River Road, Riverside',
+        providerImage: 'https://images.unsplash.com/photo-1586773860418-d3722dacf216?w=800&h=600&fit=crop&q=80',
+        status: 'ACTIVE',
+        tokenNumber: 40 + i,
+        referenceCode: `RCH-${40 + i}`,
+      })),
+      // Urban Edge Studio (nowServing: 15, nextToken: 18) -> tokens 15 to 17
+      ...Array.from({ length: 3 }).map((_, i) => ({
+        userId: dummyCustomers[i % 5]._id,
+        providerId: 'prov-salon-urban',
+        serviceId: new mongoose.Types.ObjectId(),
+        serviceName: 'Haircut',
+        providerName: 'Urban Edge Studio',
+        providerLocation: '42 Style District, Downtown',
+        providerImage: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&h=600&fit=crop&q=80',
+        status: 'ACTIVE',
+        tokenNumber: 15 + i,
+        referenceCode: `URB-${15 + i}`,
+      }))
+    ];
+
+    await Booking.insertMany(mockBookings);
+
     console.log('Seed completed successfully!');
     process.exit(0);
   } catch (error) {
